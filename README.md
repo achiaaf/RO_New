@@ -1,0 +1,2 @@
+This RO model allocates water for agricultural and domestic use It considers various sources (groundwater, desalinated waer and treated wastewater) with different quality (salinity) levels for allocation to various crops and domestic use. 
+The land is allocated for each crop based on the water available and revenue from each crop. This consider uncertainties in the domestic demand and recharge of the aquifer.
