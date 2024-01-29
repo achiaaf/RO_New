@@ -44,8 +44,10 @@ for i in range(1, areas+1):
     error.append((mape/100))
 
 aquifer = pd.read_csv('Aquifer.csv')
-quantity = aquifer['Quantity']*10
-sal = aquifer['Salinity']
+aquifer_prod = pd.read_csv('Yearly Production.csv')
+quantity = aquifer_prod.mean(axis=0)
+aquifer_sal = pd.read_csv('Yearly Salinity.csv')
+sal = aquifer_sal.mean(axis=0)
 cost = aquifer['Cost']
 
 area1 = pd.read_csv('Area1.csv')

@@ -481,48 +481,48 @@ def MAPE(X1, XP):
     return 100 * np.mean(MAPE1)
 
 
-import tensorflow as tf
-from tensorflow import keras
-import numpy as np
-from sklearn.metrics import r2_score
-from keras.models import Sequential
-from keras.layers import Dense
-from sklearn.model_selection import train_test_split
-
-
-def ANN(A, Y, Z, epochs):
-    # Normalizing the data
-    y = A / np.max(A)
-    X = np.array([Y / max(Y), Z / np.max(Z)]).T
-    X_new = X[0:len(y), :]
-    # Splitting the data into train and test
-    X_train, X_test, y_train, y_test = train_test_split(X_new, y, test_size=0.25, random_state=42)
-
-    # Defining the model
-    model = Sequential()
-    model.add(Dense(16, input_shape=(2,), activation='relu'))
-    model.add(Dense(16, activation='relu'))
-    model.add(Dense(16, activation='relu'))
-    model.add(Dense(16, activation='relu'))
-    model.add(Dense(8, activation='relu'))
-    model.add(Dense(1))
-
-    # Compiling the model
-    model.compile(loss='mean_squared_error', optimizer='adam')
-
-    # Training the model
-    model.fit(X_train, y_train, epochs=epochs)
-
-    # from matplotlib.pyplot import figure, show
-    # data_loss = pd.DataFrame(model.history.history)
-    # axes = figure(figsize =(12, 6)).add_subplot()
-    # axes.plot(data_loss)
-    # axes.set_xlabel('Epochs')
-    # axes.set_ylabel('Loss')
-    # axes.set_title('Loss Vs Epochs')
-    # show()
-
-    # Predicting using the model
-    model_predict = (model.predict(X)) * np.max(A)
-    model_predict = model_predict.tolist()
-    return model_predict
+# import tensorflow as tf
+# from tensorflow import keras
+# import numpy as np
+# from sklearn.metrics import r2_score
+# from keras.models import Sequential
+# from keras.layers import Dense
+# from sklearn.model_selection import train_test_split
+#
+#
+# def ANN(A, Y, Z, epochs):
+#     # Normalizing the data
+#     y = A / np.max(A)
+#     X = np.array([Y / max(Y), Z / np.max(Z)]).T
+#     X_new = X[0:len(y), :]
+#     # Splitting the data into train and test
+#     X_train, X_test, y_train, y_test = train_test_split(X_new, y, test_size=0.25, random_state=42)
+#
+#     # Defining the model
+#     model = Sequential()
+#     model.add(Dense(16, input_shape=(2,), activation='relu'))
+#     model.add(Dense(16, activation='relu'))
+#     model.add(Dense(16, activation='relu'))
+#     model.add(Dense(16, activation='relu'))
+#     model.add(Dense(8, activation='relu'))
+#     model.add(Dense(1))
+#
+#     # Compiling the model
+#     model.compile(loss='mean_squared_error', optimizer='adam')
+#
+#     # Training the model
+#     model.fit(X_train, y_train, epochs=epochs)
+#
+#     # from matplotlib.pyplot import figure, show
+#     # data_loss = pd.DataFrame(model.history.history)
+#     # axes = figure(figsize =(12, 6)).add_subplot()
+#     # axes.plot(data_loss)
+#     # axes.set_xlabel('Epochs')
+#     # axes.set_ylabel('Loss')
+#     # axes.set_title('Loss Vs Epochs')
+#     # show()
+#
+#     # Predicting using the model
+#     model_predict = (model.predict(X)) * np.max(A)
+#     model_predict = model_predict.tolist()
+#     return model_predict

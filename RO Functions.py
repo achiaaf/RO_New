@@ -10,7 +10,6 @@ pd.set_option('display.max_columns', 999)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 
-
 '''Importing the data'''
 population = pd.read_csv('Population.csv')
 gdp = pd.read_csv('GDP.csv')
@@ -37,8 +36,10 @@ for i in range(1, areas + 1):
     error.append((mape / 100))
 
 aquifer = pd.read_csv('Aquifer.csv')
-quantity = aquifer['Quantity'] * 1
-sal = aquifer['Salinity']
+aquifer_prod = pd.read_csv('Yearly Production.csv')
+quantity = aquifer_prod.mean(axis=0)
+aquifer_sal = pd.read_csv('Yearly Salinity.csv')
+sal = aquifer_sal.mean(axis=0)
 cost = aquifer['Cost']
 
 area1 = pd.read_csv('Area1.csv')
@@ -82,7 +83,7 @@ for i in range(1, time + 1):
     t_set.append(f't{i}')
 
 # water_demand = np.round(pd.read_csv('Water_demand.csv').values, 0)
-land_min = 5
+land_min = 10
 land_max = 500
 tww_sal = 1.2
 desal_sal = 0.5
@@ -154,9 +155,9 @@ def dem_rec_unc(ohm):
         ((revenue1.T @ land1).sum(axis=0) + (revenue2.T @ land2).sum(axis=0) + (revenue3.T @ land3).sum(axis=0) + (
                 revenue4.T @ land4).sum(axis=0) -
          ((cost[0] * q_Sc_1).sum(axis=0) + (cost[0] * q_S1).sum(axis=0) + (cost[1] * q_Sc_2).sum(axis=0) + (
-                     cost[1] * q_S2).sum(axis=0) +
+                 cost[1] * q_S2).sum(axis=0) +
           (cost[2] * q_Sc_3).sum(axis=0) + (cost[2] * q_S3).sum(axis=0) + (cost[3] * q_Sc_4).sum(axis=0) + (
-                      cost[3] * q_S4).sum(axis=0)
+                  cost[3] * q_S4).sum(axis=0)
           + 0.7 * ((q_Dc1.sum(axis=0) + q_Dc2.sum(axis=0) + q_Dc3.sum(axis=0) + q_Dc4.sum(
                      axis=0)) + q_D1 + q_D2 + q_D3 + q_D4) + 0.4 * (
                   q_Wc1.sum(axis=0) + q_Wc2.sum(axis=0) + q_Wc3.sum(axis=0) + q_Wc4.sum(axis=0)))).sum())
@@ -232,18 +233,15 @@ def dem_rec_unc(ohm):
     return model.get(), qSc_soln, qDc_soln, qS_soln, qD_soln
 
 
-# for z in range(time):
-#           model.st((qSc_vars[n].sum(axis=0)[z] + qDc_vars[n].sum(axis=0)[z] + qS_vars[n][z] + qD_vars[n][z] <= 0.9 *
-#                     quantity[n]
-#                     + recharge_cum[n][z] + (delta[n, n] * r_uncertain[n][z]) - cum_supply[n][z]).forall(r_set[n]))
 re_mean = np.mean(recharge, axis=0)
 re_std = np.std(recharge, axis=0)
-rs = []
+re_mat = []
 for r in range(areas):
-    rs.append(np.random.normal(re_mean[r], re_std[r], (time, 1000)))
-print(np.cumsum(rs[1], axis=1))
+    re_mat.append(np.random.normal(re_mean[r], re_std[r], (time, 1000)))
+
 
 def prob_vio(q1, q2, q3, q4, rs):
+    """This function calculates the probability of violating the constraints"""
     cum_supply1 = [np.sum(q1[0], axis=0)[0] + np.sum(q2[0], axis=0)[0] + q3[0][0] + q4[0][0]]
     cum_supply2 = [np.sum(q1[1], axis=0)[0] + np.sum(q2[1], axis=0)[0] + q3[1][0] + q4[1][0]]
     cum_supply3 = [np.sum(q1[2], axis=0)[0] + np.sum(q2[2], axis=0)[0] + q3[2][0] + q4[2][0]]
@@ -253,16 +251,46 @@ def prob_vio(q1, q2, q3, q4, rs):
     recharge_cum = [[re_mean[0]], [re_mean[1]], [re_mean[2]], [re_mean[3]]]
     for m in range(0, 4):
         for i in range(1, time):
-            cum_supply[m].append(cum_supply[m][i - 1] + np.sum(q1[m], axis=0)[i] + np.sum(q2[m], axis=0)[i] + q3[m][i] + q4[m][i])
+            cum_supply[m].append(
+                cum_supply[m][i - 1] + np.sum(q1[m], axis=0)[i] + np.sum(q2[m], axis=0)[i] + q3[m][i] + q4[m][i])
             recharge_cum[m].append(recharge_cum[m][i - 1] + re_mean[m])
     prob = []
     cum1 = np.cumsum(rs[0], axis=1)
     cum2 = np.cumsum(rs[1], axis=1)
     cum3 = np.cumsum(rs[2], axis=1)
     cum4 = np.cumsum(rs[3], axis=1)
-
-    for p in range(1000):
+    cum = [cum1, cum2, cum3, cum4]
+    # for p in range(1):
+    #     proba = []
+    #     for a in range(4):
+    #         proba.append(
+    #             (np.sum(q1[0], axis=0) + np.sum(q2[0], axis=0) + q3[0] + q4[0] < 0.9 * np.tile(quantity[a], time) +
+    #             cum[a][:, p] - cum_supply[a]))
+    #     prob.append(np.sum(proba) < 80)
+    for p in range():
+        proba = []
         for a in range(4):
-            prob.append(np.mean(np.sum(q1[0], axis=0) + np.sum(q2[0], axis=0) + q3[0] + q4[0] < 0.9 * np.tile(quantity[a], time) + recharge_cum[a] - cum_supply[a]))
+            proba.append(
+                (np.sum(q1[0], axis=0) + np.sum(q2[0], axis=0) + q3[0] + q4[0] < 0.9 * np.tile(quantity[a], time) +
+                cum[a][:, p] - cum_supply[a]))
+        # prob.append(np.sum(proba) < 80)
+        #print(proba[0][0])
+        for inner_list in proba:
+            if False in inner_list:
+                inner_list[:] = [False] * len(inner_list)
+                prob.append([False])
+            else:
+                proba
+        # for lst in proba:
+        #     for i in j:
+        #         prob = []
+        #         if i == 'True':
+        #             prob.append(0)
+        print(len(prob))
+    # prob_v = len(prob) - sum(prob)
+    return  prob #prob_v/1000
 
-    return prob
+
+w1, w2, w3, w4, w5 = dem_rec_unc(0.2)
+p = prob_vio(w2, w3, w4, w5, re_mat)
+
