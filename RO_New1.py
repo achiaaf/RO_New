@@ -40,12 +40,16 @@ for i in range(1, time + 1):
 
 aquifer = pd.read_csv('Aquifer.csv')
 aquifer_prod = pd.read_csv('Yearly Production.csv').values
-quantity = aquifer_prod.mean(axis=0)
+quantity = np.tile(aquifer_prod.mean(axis=0), (time, 1)).T
 aquifer_sal = pd.read_csv('Yearly Salinity.csv').values
 sal = aquifer_sal.mean(axis=0)
 cost = aquifer['Cost']
 
-recharge = np.tile(aquifer['Recharge'], (time, 1)).T * 1
+rainfall = pd.read_csv('Rainfall.csv').values
+area = 490000000
+beta = 0.1
+recharge = np.round(beta * rainfall * 0.001 * area, 0)
+yearly_recharge = np.tile(np.round(np.mean(recharge, axis=0), 0), (time, 1)).T
 
 area1 = pd.read_csv('Area1.csv')
 crops1 = area1['Crops']
@@ -130,24 +134,14 @@ sal_tol = [sal_tol1, sal_tol2, sal_tol3, sal_tol4]
 crop_water = [crop_water1, crop_water2, crop_water3, crop_water4]
 land_vars = [land1, land2, land3, land4]
 
-cum_supply1 = [0]
-cum_supply2 = [0]
-cum_supply3 = [0]
-cum_supply4 = [0]
-cum_supply = [cum_supply1, cum_supply2, cum_supply3, cum_supply4]
-re_mean = np.mean(recharge, axis=0)
-recharge_cum = [[re_mean[0]], [re_mean[1]], [re_mean[2]], [re_mean[3]]]
-quantity_cum = [[quantity[0]], [quantity[1]], [quantity[2]], [quantity[3]]]
+cum_recharge = np.cumsum(yearly_recharge, axis=1)
+cum_quantity = np.cumsum(quantity, axis=1)
+cum_supply = [[0], [0], [0], [0]]
 for a in range(0, 4):
     for i in range(1, time):
         cum_supply[a].append(
             (cum_supply[a][i - 1] + (
                     qSc_vars[a].sum(axis=0)[i-1] + qS_vars[a][i-1] + qDc_vars[a].sum(axis=0)[i-1] + qD_vars[a][i-1])).sum())
-        recharge_cum[a].append(recharge_cum[a][i - 1] + re_mean[a])
-        quantity_cum[a].append(quantity_cum[a][i-1] + quantity[a])
-# step = [0.9]
-# for k in range(time):
-#     step.append(step[k] + 0.9)
 
 
 # Objective Function
@@ -177,7 +171,7 @@ for a in range(areas):
     model.st(qW_vars[a].sum(axis=0) <= 0.6 * water_demand[a])
     for n in range(time):
         model.st((qSc_vars[a].sum(axis=0)[n] + qDc_vars[a].sum(axis=0)[n] + qS_vars[a][n] + qD_vars[a][n] <= 0.9 *
-                  (quantity_cum[a][n]) + recharge_cum[a][n] - cum_supply[a][n]))
+                  (cum_quantity[a, n]) + cum_recharge[a, n] - cum_supply[a][n]))
 
     # Land Constraint
     model.st(land_vars[a] >= land_min)
@@ -223,15 +217,6 @@ for i in range(areas):
     sal_allo = (sal[i] * qSc_vars[i].get() + tww_sal*qW_vars[i].get() + desal_sal * qDc_vars[i].get())/(qSc_vars[i].get() + qW_vars[i].get() + qDc_vars[i].get())
     d_sal_allo = pd.DataFrame(data=sal_allo, index=crops[i], columns=t_set)
 
-    # Plotting the salinity of water allocated for the crops
-    for c in range(len(crops[i])):
-        plt.plot(t_set, d_sal_allo.iloc[c], label=f'{crops[i][c]}', linewidth=2)
-    plt.ylabel('Salinity of Water Allocated (dS/m)')
-    plt.xlabel('Timestep')
-    plt.legend()
-    plt.title(f'Area {i+1}', fontsize=20)
-    plt.show()
-
     # Plotting the results for water allocated to the crops
     fig, axes = plt.subplots(3, sharex=True, figsize=[11, 9])
     for c in range(len(crops[i])):
@@ -249,20 +234,20 @@ for i in range(areas):
     plt.xlabel('Timestep')
     fig.suptitle(f'Area {i+1}', fontsize=20)
     plt.show()
-    # # #
-    # # A bar chart for the water allocated
+
+    # A bar chart for the water allocated
+    width = 0.35
+    fig = plt.subplots(figsize=(10, 7))
+    p1 = plt.bar(crops[i], d1.sum(axis=1), width, color='r')
+    p2 = plt.bar(crops[i], d3.sum(axis=1), width, bottom=d1.sum(axis=1), color='b')
+    p3 = plt.bar(crops[i], d2.sum(axis=1), width, bottom=d3.sum(axis=1)+d1.sum(axis=1), color='g')
+    plt.legend((p1[0], p2[0], p3[0]), ('Brackish Groundwater', 'Desalinated Water', 'Treated Wastewater'))
+    plt.title(f'Area {i+1}')
+    plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
+    plt.show()
+    #
     # width = 0.35
-    # fig = plt.subplots(figsize=(10, 7))
-    # p1 = plt.bar(crops[i], d1.sum(axis=1), width, color='r')
-    # p2 = plt.bar(crops[i], d3.sum(axis=1), width, bottom=d1.sum(axis=1), color='b')
-    # p3 = plt.bar(crops[i], d2.sum(axis=1), width, bottom=d3.sum(axis=1)+d1.sum(axis=1), color='g')
-    # plt.legend((p1[0], p2[0], p3[0]), ('Brackish Groundwater', 'Desalinated Water', 'Treated Wastewater'))
-    # plt.title(f'Area {i+1}')
-    # plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
-    # plt.show()
-    # #
-    # width = 0.35
-    # fig = plt.subplots(figsize=(10, 7))
+    # plt.subplots(figsize=(10, 7))
     # p1 = plt.bar(crops[i], d1.mean(axis=1), width, yerr=d1.std(axis=1))
     # p2 = plt.bar(crops[i], d3.mean(axis=1), width, bottom=d1.mean(axis=1), yerr=d3.std(axis=1))
     # p3 = plt.bar(crops[i], d2.mean(axis=1), width, bottom=d3.mean(axis=1)+d1.mean(axis=1), yerr=d2.std(axis=1))
@@ -270,7 +255,7 @@ for i in range(areas):
     # plt.title(f'Area {i+1}')
     # plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
     # plt.show()
-    #
+
     # Plotting the results for land allocated
     for c in range(len(crops[i])):
         plt.plot(t_set, d4.iloc[c], label=f'{crops[i][c]}', linewidth=2)
@@ -279,22 +264,23 @@ for i in range(areas):
     plt.legend()
     plt.title(f'Area {i+1}', fontsize=20)
     plt.show()
-    # #
-    # # A bar chart for the land allocated
-    # plt.bar(t_set, d4.sum(axis=0), width, color='g')
-    # plt.ylabel('Total Land Allocated (hectares)')
-    # plt.title(f'Area {i+1}')
-    # plt.show()
-    #
-    # plt.bar(crops[i], d4.sum(axis=1), width=0.2, color='m')
-    # plt.ylabel('Land Allocated (hectares)')
-    # plt.title(f'Area {i+1}')
-    # plt.show()
-    # # Plotting a graph for the domestic use
-    # plt.plot(t_set, dome.iloc[:, 0], label='Desalinated Water', linewidth=2)
-    # plt.plot(t_set, dome.iloc[:, 1], label='Brackish Groundwater', linewidth=2)
-    # plt.title(f'Domestic Use for Area {i+1}')
-    # plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
-    # plt.show()
+
+    # A bar chart for the land allocated
+    plt.bar(t_set, d4.sum(axis=0), width, color='g')
+    plt.ylabel('Total Land Allocated (hectares)')
+    plt.title(f'Area {i+1}')
+    plt.show()
+
+    plt.bar(crops[i], d4.sum(axis=1), width=0.2, color='m')
+    plt.ylabel('Land Allocated (hectares)')
+    plt.title(f'Area {i+1}')
+    plt.show()
+
+    # Plotting a graph for the domestic use
+    plt.plot(t_set, dome.iloc[:, 0], label='Desalinated Water', linewidth=2)
+    plt.plot(t_set, dome.iloc[:, 1], label='Brackish Groundwater', linewidth=2)
+    plt.title(f'Domestic Use for Area {i+1}')
+    plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
+    plt.show()
 
 
