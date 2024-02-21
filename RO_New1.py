@@ -194,93 +194,247 @@ folder_path = 'C:/Users/User/Documents/RO_New/Deterministic Results'
 if not os.path.exists(folder_path):
     os.makedirs(folder_path)
 plt.rcParams['font.size'] = '14'
+d1s = []
+d3s = []
+d2s = []
+d4s = []
+domes = []
+sal_allos = []
+land_allos = []
 for i in range(areas):
     h_aquifer = pd.DataFrame(index=['Brackish Groundwater', np.sum(qSc_vars[i].get())], columns=t_set)
-    d1 = pd.DataFrame(data=qSc_vars[i].get()/1000000, index=crops[i], columns=t_set)
+    d1 = pd.DataFrame(data=qSc_vars[i].get(), index=crops[i], columns=t_set)
     h_tww = pd.DataFrame(index=['Treated Wastewater', np.sum(qW_vars[i].get())], columns=t_set)
-    d2 = pd.DataFrame(data=qW_vars[i].get()/1000000, index=crops[i], columns=t_set)
+    d2 = pd.DataFrame(data=qW_vars[i].get(), index=crops[i], columns=t_set)
     h_desal = pd.DataFrame(index=['Desalinated Water', np.sum(qDc_vars[i].get())], columns=t_set)
-    d3 = pd.DataFrame(data=qDc_vars[i].get()/1000000, index=crops[i], columns=t_set)
+    d3 = pd.DataFrame(data=qDc_vars[i].get(), index=crops[i], columns=t_set)
     h_land = pd.DataFrame(index=['Land Allocated', np.sum(land_vars[i].get())], columns=t_set)
     d4 = pd.DataFrame(data=land_vars[i].get(), index=crops[i], columns=t_set)
+    h_sal = pd.DataFrame(index=['Salinity of Water Allocated'], columns=t_set)
+    sal_allo = (sal[i] * qSc_vars[i].get() + tww_sal*qW_vars[i].get() + desal_sal * qDc_vars[i].get())/(qSc_vars[i].get() + qW_vars[i].get() + qDc_vars[i].get())
+    d_sal_allo = pd.DataFrame(data=sal_allo, index=crops[i], columns=t_set)
     d5 = pd.DataFrame(data=qD_vars[i].get(), index=t_set, columns=['Desalinated Water'])
     d6 = pd.DataFrame(data=qS_vars[i].get(), index=t_set, columns=['Groundwater Water'])
     d7 = pd.DataFrame({'Total Amount of water from the aquifer used': [
         np.sum(qSc_vars[i].get()) + np.sum(qDc_vars[i].get()) + np.sum(qS_vars[i].get()) + np.sum(qD_vars[i].get())]})
     dome = pd.concat([d5, d6], axis=1)
     domestic = pd.concat([pd.concat([d5, d6], axis=1), d7], axis=1)
-    d = pd.concat([h_aquifer, d1, h_tww, d2, h_desal, d3, h_land, d4], axis=0)
-    domestic.to_excel(os.path.join(folder_path, f'Domestic Use for Area {i + 1}.xlsx'))
-    d.to_excel(os.path.join(folder_path, f'Crops Output for Area {i + 1}.xlsx'))
-
-    # Calculating the Salinity of water allocated to the various crops
-    sal_allo = (sal[i] * qSc_vars[i].get() + tww_sal*qW_vars[i].get() + desal_sal * qDc_vars[i].get())/(qSc_vars[i].get() + qW_vars[i].get() + qDc_vars[i].get())
-    d_sal_allo = pd.DataFrame(data=sal_allo, index=crops[i], columns=t_set)
-
-    # Plotting the results for water allocated to the crops
-    fig, axes = plt.subplots(3, sharex=True, figsize=[11, 9])
-    for c in range(len(crops[i])):
-        axes[0].plot(t_set, d1.iloc[c], label=f'{crops[i][c]}', linewidth=2)
-        axes[1].plot(t_set, d3.iloc[c], label=f'{crops[i][c]}', linewidth=2)
-        axes[2].plot(t_set, d2.iloc[c], label=f'{crops[i][c]}', linewidth=2)
-    axes[0].set_title('Brackish Groundwater')
-    axes[1].set_title('Desalinated Water')
-    axes[2].set_title('Treated Wastewater')
-    # plt.legend(loc='upper right', bbox_to_anchor=(1.135, 3.45), fancybox=True, shadow=True, fontsize=12)
-    plt.legend(ncol=7, loc='upper right', bbox_to_anchor=(1, -0.25), fancybox=True, fontsize=12)
-    fig.add_subplot(1, 1, 1, frame_on=False)
-    plt.tick_params(labelcolor="none", bottom=False, left=False)
-    plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
-    plt.xlabel('Timestep')
-    fig.suptitle(f'Area {i+1}', fontsize=20)
-    plt.show()
-
-    # A bar chart for the water allocated
-    width = 0.35
-    fig = plt.subplots(figsize=(10, 7))
-    p1 = plt.bar(crops[i], d1.sum(axis=1), width, color='r')
-    p2 = plt.bar(crops[i], d3.sum(axis=1), width, bottom=d1.sum(axis=1), color='b')
-    p3 = plt.bar(crops[i], d2.sum(axis=1), width, bottom=d3.sum(axis=1)+d1.sum(axis=1), color='g')
-    plt.legend((p1[0], p2[0], p3[0]), ('Brackish Groundwater', 'Desalinated Water', 'Treated Wastewater'))
-    plt.title(f'Area {i+1}')
-    plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
-    plt.show()
+    d = pd.concat([h_aquifer, d1, h_tww, d2, h_desal, d3, h_land, d4, h_sal, d_sal_allo], axis=0)
+    # domestic.to_excel(os.path.join(folder_path, f'Domestic Use for Area {i + 1}.xlsx'))
+    # d.to_excel(os.path.join(folder_path, f'Crops Output for Area {i + 1}.xlsx'))
+    d1s.append(d1)
+    d3s.append(d3)
+    d2s.append(d2)
+    d4s.append(d4)
+    domes.append(dome)
+    sal_allos.append(d_sal_allo)
+    land_allos.append(d4)
+    # # Calculating the Salinity of water allocated to the various crops
+    # sal_allo = (sal[i] * qSc_vars[i].get() + tww_sal*qW_vars[i].get() + desal_sal * qDc_vars[i].get())/(qSc_vars[i].get() + qW_vars[i].get() + qDc_vars[i].get())
+    # d_sal_allo = pd.DataFrame(data=sal_allo, index=crops[i], columns=t_set)
     #
+    # # Plotting the results for water allocated to the crops
+    # fig, axes = plt.subplots(3, sharex=True, figsize=[11, 9])
+    # for c in range(len(crops[i])):
+    #     axes[0].plot(t_set, d1.iloc[c]/1000000, label=f'{crops[i][c]}', linewidth=2)
+    #     axes[1].plot(t_set, d3.iloc[c]/1000000, label=f'{crops[i][c]}', linewidth=2)
+    #     axes[2].plot(t_set, d2.iloc[c]/1000000, label=f'{crops[i][c]}', linewidth=2)
+    # axes[0].set_title('Brackish Groundwater')
+    # axes[1].set_title('Desalinated Water')
+    # axes[2].set_title('Treated Wastewater')
+    # # plt.legend(loc='upper right', bbox_to_anchor=(1.135, 3.45), fancybox=True, shadow=True, fontsize=12)
+    # plt.legend(ncol=7, loc='upper right', bbox_to_anchor=(1, -0.25), fancybox=True, fontsize=12)
+    # fig.add_subplot(1, 1, 1, frame_on=False)
+    # plt.tick_params(labelcolor="none", bottom=False, left=False)
+    # plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
+    # plt.xlabel('Timestep')
+    # fig.suptitle(f'Area {i+1}', fontsize=20)
+    # plt.show()
+    #
+    # plt.figure(figsize=[11, 10])
+    # plt.bar(t_set, d1.sum(axis=0) + d3.sum(axis=0) + dome.sum(axis=1))
+    # plt.plot(t_set, (quantity[i, :]) + yearly_recharge[i, :], label='Amount of Water Available', linewidth=3, color='r')
+    # plt.ylabel('Water Allocated (m$^3$)')
+    # plt.xlabel('Timestep')
+    # plt.title(f'Area {i + 1}')
+    # plt.legend(ncol=7, loc='upper right', bbox_to_anchor=(0.99, -0.05), fancybox=True, fontsize=12)
+    # plt.show()
+
+    # print(dome.sum(axis=1))
+    # # A bar chart for the water allocated
     # width = 0.35
-    # plt.subplots(figsize=(10, 7))
-    # p1 = plt.bar(crops[i], d1.mean(axis=1), width, yerr=d1.std(axis=1))
-    # p2 = plt.bar(crops[i], d3.mean(axis=1), width, bottom=d1.mean(axis=1), yerr=d3.std(axis=1))
-    # p3 = plt.bar(crops[i], d2.mean(axis=1), width, bottom=d3.mean(axis=1)+d1.mean(axis=1), yerr=d2.std(axis=1))
+    # fig = plt.subplots(figsize=(10, 7))
+    # p1 = plt.bar(crops[i], d1.sum(axis=1), width, color='r')
+    # p2 = plt.bar(crops[i], d3.sum(axis=1), width, bottom=d1.sum(axis=1), color='b')
+    # p3 = plt.bar(crops[i], d2.sum(axis=1), width, bottom=d3.sum(axis=1)+d1.sum(axis=1), color='g')
     # plt.legend((p1[0], p2[0], p3[0]), ('Brackish Groundwater', 'Desalinated Water', 'Treated Wastewater'))
     # plt.title(f'Area {i+1}')
     # plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
     # plt.show()
+    # #
+    # # width = 0.35
+    # # plt.subplots(figsize=(10, 7))
+    # # p1 = plt.bar(crops[i], d1.mean(axis=1), width, yerr=d1.std(axis=1))
+    # # p2 = plt.bar(crops[i], d3.mean(axis=1), width, bottom=d1.mean(axis=1), yerr=d3.std(axis=1))
+    # # p3 = plt.bar(crops[i], d2.mean(axis=1), width, bottom=d3.mean(axis=1)+d1.mean(axis=1), yerr=d2.std(axis=1))
+    # # plt.legend((p1[0], p2[0], p3[0]), ('Brackish Groundwater', 'Desalinated Water', 'Treated Wastewater'))
+    # # plt.title(f'Area {i+1}')
+    # # plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
+    # # plt.show()
+    #
+    # # Plotting the results for land allocated
+    # for c in range(len(crops[i])):
+    #     plt.plot(t_set, d4.iloc[c], label=f'{crops[i][c]}', linewidth=2)
+    # plt.ylabel('Land Allocated (hectares)')
+    # plt.xlabel('Timestep')
+    # plt.legend()
+    # plt.title(f'Area {i+1}', fontsize=20)
+    # plt.show()
+    #
+    # # A bar chart for the land allocated
+    # plt.bar(t_set, d4.sum(axis=0), width, color='g')
+    # plt.ylabel('Total Land Allocated (hectares)')
+    # plt.title(f'Area {i+1}')
+    # plt.show()
+    #
+    # plt.bar(crops[i], d4.sum(axis=1), width=0.2, color='m')
+    # plt.ylabel('Land Allocated (hectares)')
+    # plt.title(f'Area {i+1}')
+    # plt.show()
+    #
+    # # Plotting a graph for the domestic use
+    # plt.plot(t_set, dome.iloc[:, 0], label='Desalinated Water', linewidth=2)
+    # plt.plot(t_set, dome.iloc[:, 1], label='Brackish Groundwater', linewidth=2)
+    # plt.title(f'Domestic Use for Area {i+1}')
+    # plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
+    # plt.show()
 
-    # Plotting the results for land allocated
-    for c in range(len(crops[i])):
-        plt.plot(t_set, d4.iloc[c], label=f'{crops[i][c]}', linewidth=2)
-    plt.ylabel('Land Allocated (hectares)')
-    plt.xlabel('Timestep')
-    plt.legend()
-    plt.title(f'Area {i+1}', fontsize=20)
-    plt.show()
+# print(land_allos)
 
-    # A bar chart for the land allocated
-    plt.bar(t_set, d4.sum(axis=0), width, color='g')
-    plt.ylabel('Total Land Allocated (hectares)')
-    plt.title(f'Area {i+1}')
-    plt.show()
+# print((land_allos[0]/land_allos[0].sum(axis=0)))
 
-    plt.bar(crops[i], d4.sum(axis=1), width=0.2, color='m')
-    plt.ylabel('Land Allocated (hectares)')
-    plt.title(f'Area {i+1}')
-    plt.show()
+percentage_land = []
+cum_per_land = []
+for m in range(4):
+    cum_per_land.append((land_allos[m].cumsum(axis=0)/land_allos[m].sum(axis=0))*100)
+    percentage_land.append((land_allos[m]/land_allos[m].sum(axis=0))*100)
 
-    # Plotting a graph for the domestic use
-    plt.plot(t_set, dome.iloc[:, 0], label='Desalinated Water', linewidth=2)
-    plt.plot(t_set, dome.iloc[:, 1], label='Brackish Groundwater', linewidth=2)
-    plt.title(f'Domestic Use for Area {i+1}')
-    plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
-    plt.show()
+new_row = pd.DataFrame([[0.0] * len(cum_per_land[0].columns)], columns=cum_per_land[0].columns)
+cum_per_landn = []
+for w in range(4):
+    cum_per_landn.append(pd.concat([new_row, cum_per_land[w]], ignore_index=True))
+# print(cum_per_landn[1])
+# print(percentage_land[1])
+#     cum_per_land[w].insert(loc=0, column='t0', value=np.zeros(len(crops[w])))
+# cum_per_land[0].insert(loc=0, column='t0', value=np.zeros(len(crops[0])))
 
+# new_row = pd.DataFrame([[0.0] * len(cum_per_land[0].columns)], columns=cum_per_land[0].columns)
+# dn = pd.concat([new_row, cum_per_land[0]], ignore_index=True)
+
+# print(dn)
+#
+fig = plt.figure(figsize=(10, 10))
+# for k in range(len(crops[0])):
+#     plt.bar(t_set, percentage_land[0].iloc[k], bottom=dn.iloc[k], label=f'{crops[0][k]}')
+ax = fig.add_subplot(111, projection='3d')
+for i in range(4):
+    for j in range(len(crops[i])):
+        ax.bar3d(i, np.arange(20), cum_per_landn[i].iloc[j], 0.2, 0.2,  percentage_land[i].iloc[j],  label=f'{crops[i][j]}', alpha=0.9)
+# plt.legend()
+plt.show()
+
+
+# plt.figure(figsize=[11, 10])
+# plt.bar(t_set, d1.sum(axis=0) + d3.sum(axis=0) + dome.sum(axis=1))
+# plt.plot(t_set, (quantity[i, :]) + yearly_recharge[i, :], label='Amount of Water Available', linewidth=3, color='r')
+# plt.ylabel('Water Allocated (m$^3$)')
+# plt.xlabel('Timestep')
+# plt.title(f'Area {i + 1}')
+# plt.legend(loc='upper right', bbox_to_anchor=(0.99, -0.05), fancybox=True, fontsize=12)
+# plt.show()
+#
+# # Plotting the results for the groundwater allocated and comparing with what is available
+# timestep = np.arange(1, 21)
+# fig, axes = plt.subplots(nrows=2, ncols=2, sharex=True, sharey=False)
+# pos_x = [0, 0, 1, 1]
+# pos_y = [0, 1, 0, 1]
+# for b in range(areas):
+#     axes[pos_x[b], pos_y[b]].bar(timestep, d1s[b].sum(axis=0) + d3s[b].sum(axis=0) + domes[b].sum(axis=1))
+#     axes[pos_x[b], pos_y[b]].plot(timestep, quantity[b, :] + yearly_recharge[b, :], label='Amount of Water Available', linewidth=3, color='r')
+#     axes[pos_x[b], pos_y[b]].locator_params(axis='x', nbins=5)
+#     axes[pos_x[b], pos_y[b]].set_title(f'Area {b + 1}')
+# plt.legend(loc='upper right', bbox_to_anchor=(1, -0.09), fancybox=True, fontsize=12)
+# fig.add_subplot(1, 1, 1, frame_on=False)
+# plt.tick_params(labelcolor="none", bottom=False, left=False)
+# plt.ylabel('Water Allocated (m$^3$)')
+# plt.xlabel('Timestep')
+# plt.show()
+
+# # Plotting the results of the amount of water needed for agriculture and the actual amount allocated
+# timestep = np.arange(1, 21)
+# fig, axes = plt.subplots(nrows=2, ncols=2, sharex=True, sharey=False)
+# pos_x = [0, 0, 1, 1]
+# pos_y = [0, 1, 0, 1]
+# for b in range(areas):
+#     axes[pos_x[b], pos_y[b]].bar(timestep, d1s[b].sum(axis=0) + d3s[b].sum(axis=0) + d2s[b].sum(axis=0))
+#     axes[pos_x[b], pos_y[b]].plot(timestep, np.sum((crop_water[b] * d4s[b]), axis=0), label='Amount of Water Needed for Irrigation', linewidth=3, color='r')
+#     axes[pos_x[b], pos_y[b]].locator_params(axis='x', nbins=5)
+#     axes[pos_x[b], pos_y[b]].set_title(f'Area {b + 1}')
+# plt.legend(loc='upper right', bbox_to_anchor=(1, -0.09), fancybox=True, fontsize=12)
+# fig.add_subplot(1, 1, 1, frame_on=False)
+# plt.tick_params(labelcolor="none", bottom=False, left=False)
+# plt.ylabel('Water Allocated (m$^3$)')
+# plt.xlabel('Timestep (Year)')
+# plt.show()
+
+# # Plotting the results of the amount of water needed for domestic use and the actual amount allocated
+# timestep = np.arange(1, 21)
+# fig, axes = plt.subplots(nrows=2, ncols=2, sharex=True, sharey=False)
+# pos_x = [0, 0, 1, 1]
+# pos_y = [0, 1, 0, 1]
+# for b in range(areas):
+#     axes[pos_x[b], pos_y[b]].bar(timestep, domes[b].sum(axis=1)/100000, color='g')
+#     axes[pos_x[b], pos_y[b]].plot(timestep, water_demand[b]/100000, label='Amount of Water Needed for Domestic Use', linewidth=3, color='r')
+#     axes[pos_x[b], pos_y[b]].locator_params(axis='x', nbins=5)
+#     axes[pos_x[b], pos_y[b]].set_title(f'Area {b + 1}')
+# plt.legend(loc='upper right', bbox_to_anchor=(1, -0.09), fancybox=True, fontsize=12)
+# fig.add_subplot(1, 1, 1, frame_on=False)
+# plt.tick_params(labelcolor="none", bottom=False, left=False)
+# plt.ylabel('Water Allocated (x10$^5$ m$^3$)')
+# plt.xlabel('Timestep (Year)')
+# plt.show()
+
+# # Plotting the results of the Salinity tolerance of the crops and the actual salinity of water allocated for the crops
+# plt.rcParams['font.size'] = '8'
+# timestep = np.arange(1, 21)
+# fig, axes = plt.subplots(nrows=2, ncols=2, sharex=False, sharey=False)
+# pos_x = [0, 0, 1, 1]
+# pos_y = [0, 1, 0, 1]
+# for b in range(areas):
+#     axes[pos_x[b], pos_y[b]].bar(crops[b], sal_allos[b].iloc[:, 0], color='y')
+#     axes[pos_x[b], pos_y[b]].plot(crops[b], sal_tol[b][:, 0], label='Salinity Tolerance', linewidth=3, color='r')
+#     axes[pos_x[b], pos_y[b]].locator_params(axis='x', nbins=5)
+#     axes[pos_x[b], pos_y[b]].set_title(f'Area {b + 1}', fontsize=14)
+# plt.legend(loc='upper right', bbox_to_anchor=(1, -0.09), fancybox=True, fontsize=12)
+# fig.add_subplot(1, 1, 1, frame_on=False)
+# plt.tick_params(labelcolor="none", bottom=False, left=False)
+# plt.ylabel('Salinity (dS/m)', fontsize=14)
+# plt.xlabel('Crops', fontsize=14)
+# plt.show()
+
+# for c in range(len(crops[i])):
+#     axes[0].plot(t_set, d1.iloc[c]/1000000, label=f'{crops[i][c]}', linewidth=2)
+#     axes[1].plot(t_set, d3.iloc[c]/1000000, label=f'{crops[i][c]}', linewidth=2)
+#     axes[2].plot(t_set, d2.iloc[c]/1000000, label=f'{crops[i][c]}', linewidth=2)
+# axes[0].set_title('Brackish Groundwater')
+# axes[1].set_title('Desalinated Water')
+# axes[2].set_title('Treated Wastewater')
+# plt.legend(loc='upper right', bbox_to_anchor=(1.135, 3.45), fancybox=True, shadow=True, fontsize=12)
+# plt.legend(ncol=7, loc='upper right', bbox_to_anchor=(1, -0.25), fancybox=True, fontsize=12)
+# fig.add_subplot(1, 1, 1, frame_on=False)
+# plt.tick_params(labelcolor="none", bottom=False, left=False)
+# plt.ylabel('Water Allocated (x10$^6$ m$^3$)')
+# plt.xlabel('Timestep')
+# fig.suptitle(f'Area {i+1}', fontsize=20)
+# plt.show()
 
