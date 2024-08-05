@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import os
+import math
 from numpy.linalg import inv
 import rsome as rso
 from rsome import ro, grb_solver as grb
@@ -143,13 +143,6 @@ def deterministic():
     crop_water = [crop_water1, crop_water2, crop_water3, crop_water4]
     land_vars = [land1, land2, land3, land4]
 
-    cum_supply = [[0], [0], [0], [0]]
-    for a in range(0, 4):
-        for i in range(1, time):
-            cum_supply[a].append(
-                (cum_supply[a][i - 1] + (
-                        qSc_vars[a].sum(axis=0)[i-1] + qS_vars[a][i-1] + qDc_vars[a].sum(axis=0)[i-1] + qD_vars[a][i-1])).sum())
-
     # Objective Function
     model.max(((revenue1.T @ land1).sum(axis=0) + (revenue2.T @ land2).sum(axis=0) + (revenue3.T @ land3).sum(axis=0) + (
             revenue4.T @ land4).sum(axis=0) -
@@ -175,9 +168,8 @@ def deterministic():
 
         # Sources Constraint
         model.st(qW_vars[a].sum(axis=0) <= 0.6 * water_demand[a])
-        for n in range(time):
-            model.st((qSc_vars[a].sum(axis=0)[n] + qDc_vars[a].sum(axis=0)[n] + qS_vars[a][n] + qD_vars[a][n] <= 0.9 *
-                      (cum_prod[a, n]) + cum_recharge[a, n] - cum_supply[a][n]))
+        model.st(qSc_vars[a].sum(axis=0) + qDc_vars[a].sum(axis=0) + qS_vars[a] + qD_vars[a] <= 0.9 *
+                      (yearly_prod[a]) + yearly_recharge[a, :])
 
         # Land Constraint
         model.st(land_vars[a] >= land_min, land_vars[a] <= land_max)
@@ -261,21 +253,19 @@ def rec_unc(ohm):
     # Creating the demand  and recharge uncertainty set
     r_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
     r_set = []
+    covars = []
     for r in range(areas):
         r_set.append((rso.norm(r_uncertain[r]) <= ohm))
-
-    cum_supply = [[0], [0], [0], [0]]
-    for a in range(0, 4):
-        for i in range(1, time):
-            cum_supply[a].append(
-                (cum_supply[a][i - 1] + (
-                        qSc_vars[a].sum(axis=0)[i-1] + qS_vars[a][i-1] + qDc_vars[a].sum(axis=0)[i-1] + qD_vars[a][i-1])).sum())
-
+        covars.append(np.cov(aquifer_prod.iloc[r], recharge[r, :], rowvar=False))
+    # variance = np.var(recharge, axis=0)    # The variance of recharge for the various areas
     variance = np.var(recharge, axis=0)    # The variance of recharge for the various areas
 
     delta = []  # Finding the cumulative sum of the Cholesky decomposition of the covariance matrix
     for var in variance:
-        delta.append(np.diag(np.cumsum(np.diag(np.linalg.cholesky(np.diag(np.full(time, var)))))))
+        delta.append(np.diag(np.diag(np.linalg.cholesky(np.diag(np.full(time, var))))))
+    # delta = []  # Finding the cumulative sum of the Cholesky decomposition of the covariance matrix
+    # for var in covars:
+    #     delta.append(np.linalg.cholesky(var))
 
     # Objective Function
     model.max(((revenue1.T @ land1).sum(axis=0) + (revenue2.T @ land2).sum(axis=0) + (revenue3.T @ land3).sum(axis=0) + (
@@ -302,10 +292,11 @@ def rec_unc(ohm):
 
         # Sources Constraint
         model.st(qW_vars[a].sum(axis=0) <= 0.6 * water_demand[a])
-        for z in range(time):
-            model.st((qSc_vars[a].sum(axis=0)[z] + qDc_vars[a].sum(axis=0)[z] + qS_vars[a][z] + qD_vars[a][z] <= 0.9 *
-                      (cum_prod[a, z])
-                      + cum_recharge[a, z] + (delta[a][:, z] @ r_uncertain[a]) - cum_supply[a][z]).forall(r_set[a]))
+        model.st((qSc_vars[a].sum(axis=0) + qDc_vars[a].sum(axis=0) + qS_vars[a] + qD_vars[a] <= 0.9 *
+                      (yearly_prod[a]) + yearly_recharge[a, :] + (delta[a] @ r_uncertain[a])).forall(r_set[a]))
+        # model.st((qSc_vars[a].sum(axis=0) + qDc_vars[a].sum(axis=0) + qS_vars[a] + qD_vars[a] <= 0.9 *
+        #               (np.tile(np.mean(aquifer_prod.iloc[a]), (time, 1)))
+        #               + np.tile(recharge[a, :], (time, 1)) + (delta[a] @ r_uncertain[a]).sum(axis=0)).forall(r_set[a]))
 
         # Land Constraint
         model.st(land_vars[a] >= land_min, land_vars[a] <= land_max)
@@ -333,131 +324,6 @@ def rec_unc(ohm):
         qW_soln.append(qW_vars[s].get())
         land_soln.append(land_vars[s].get())
     return model.get(), qSc_soln, qDc_soln, qS_soln, qD_soln, qW_soln, land_soln
-
-
-# def rec_unc(ohm):
-#     """Defining the Model"""
-#     model = ro.Model()
-#
-#     # Define decision variables
-#     q_Sc_1 = model.dvar((len(crops1), time))  # matrix indicating the amount of water from a source allocated to a crop
-#     q_Sc_2 = model.dvar((len(crops2), time))
-#     q_Sc_3 = model.dvar((len(crops3), time))
-#     q_Sc_4 = model.dvar((len(crops4), time))
-#
-#     q_Wc1 = model.dvar(
-#         (len(crops1), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc2 = model.dvar(
-#         (len(crops2), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc3 = model.dvar(
-#         (len(crops3), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc4 = model.dvar(
-#         (len(crops4), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#
-#     q_Dc1 = model.dvar(
-#         (len(crops1), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc2 = model.dvar(
-#         (len(crops2), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc3 = model.dvar(
-#         (len(crops3), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc4 = model.dvar(
-#         (len(crops4), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#
-#     q_S1 = model.dvar(time)
-#     q_S2 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#     q_S3 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#     q_S4 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#
-#     q_D1 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D2 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D3 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D4 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#
-#     land1 = model.dvar((len(crops1), time))  # the amount of land allocated for the various crops
-#     land2 = model.dvar((len(crops2), time))
-#     land3 = model.dvar((len(crops3), time))
-#     land4 = model.dvar((len(crops4), time))
-#     qD_vars = [q_D1, q_D2, q_D3, q_D4]
-#     qS_vars = [q_S1, q_S2, q_S3, q_S4]
-#     qW_vars = [q_Wc1, q_Wc2, q_Wc3, q_Wc4]
-#     qDc_vars = [q_Dc1, q_Dc2, q_Dc3, q_Dc4]
-#     qSc_vars = [q_Sc_1, q_Sc_2, q_Sc_3, q_Sc_4]
-#     sal_tol = [sal_tol1, sal_tol2, sal_tol3, sal_tol4]
-#     crop_water = [crop_water1, crop_water2, crop_water3, crop_water4]
-#     land_vars = [land1, land2, land3, land4]
-#
-#     # Creating the demand  and recharge uncertainty set
-#     r_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
-#     r_set = []
-#     for e in range(areas):
-#         r_set.append((rso.norm(r_uncertain[e]) <= ohm))
-#     cum_supply = [[0], [0], [0], [0]]
-#     for w in range(0, 4):
-#         for g in range(1, time):
-#             cum_supply[w].append(
-#                 (cum_supply[w][g - 1] + (
-#                         qSc_vars[w].sum(axis=0)[g-1] + qS_vars[w][g-1] + qDc_vars[w].sum(axis=0)[g-1] + qD_vars[w][g-1])).sum())
-#     variance = np.var(recharge, axis=0)    # The variance of recharge for the various areas
-#
-#     delta = []  # Finding the cumulative sum of the Cholesky decomposition of the covariance matrix
-#     for var in variance:
-#         delta.append(np.diag(np.cumsum(np.diag(np.linalg.cholesky(np.diag(np.full(time, var)))))))
-#
-#     # Objective Function
-#     model.max(((revenue1.T @ land1).sum(axis=0) + (revenue2.T @ land2).sum(axis=0) + (revenue3.T @ land3).sum(axis=0) + (
-#             revenue4.T @ land4).sum(axis=0) -
-#                ((cost[0] * q_Sc_1).sum(axis=0) + (cost[1] * q_Sc_2).sum(axis=0) + (cost[2] * q_Sc_3).sum(axis=0) + (
-#                        cost[3] * q_Sc_4).sum(axis=0) + (
-#                         cost[0] * q_S1).sum(axis=0) + (cost[1] * q_S2).sum(axis=0) + (cost[2] * q_S3).sum(axis=0) + (
-#                         cost[3] * q_S4).sum(axis=0) + 0.7 * (
-#                         q_Dc1.sum(axis=0) + q_Dc2.sum(axis=0) + q_Dc3.sum(axis=0) + q_Dc4.sum(axis=0) + q_D1 + q_D2 + q_D3 + q_D4) + 0.4 * (
-#                         q_Wc1.sum(axis=0) + q_Wc2.sum(axis=0) + q_Wc3.sum(axis=0) + q_Wc4.sum(axis=0)))).sum())
-#
-#     for r in range(areas):
-#         '''Defining the constraints'''
-#         # Domestic Demand Constraints
-#         model.st(qS_vars[r] + qD_vars[r] >= water_demand[r])
-#
-#         # Crop Demand Constraints
-#         model.st(qSc_vars[r] + qDc_vars[r] + qW_vars[r] >= crop_water[r] * land_vars[r])
-#
-#         # Quality Constraint
-#         model.st(sal[r] * qS_vars[r] + desal_sal * qD_vars[r] <= domestic_sal * (qS_vars[r] + qD_vars[r]))
-#         model.st(sal[r] * qSc_vars[r] + tww_sal * qW_vars[r] + desal_sal * qDc_vars[a] <= sal_tol[r] * (
-#                 qSc_vars[r] + qW_vars[r] + qDc_vars[r]))
-#
-#         # Sources Constraint
-#         model.st(qW_vars[r].sum(axis=0) <= 0.6 * water_demand[r])
-#         for y in range(time):
-#             model.st((qSc_vars[r].sum(axis=0)[y] + qDc_vars[r].sum(axis=0)[y] + qS_vars[r][y] + qD_vars[r][y] <= 0.9 *
-#                       (cum_prod[r, y]) + cum_recharge[r, y] + (delta[r][:, y] @ r_uncertain[r]) - cum_supply[r][y]).forall(r_set[r]))
-#
-#         # Land Constraint
-#         model.st(land_vars[a] >= land_min, land_vars[a] <= land_max)
-#
-#         # Non-negativity Constraint
-#         q_vars = [q_Sc_1, q_S1, q_Sc_2, q_S2, q_Sc_3, q_S3, q_Sc_4, q_S4, q_Dc1, q_Dc2, q_Dc3, q_Dc4, q_D1, q_D2, q_D3,
-#                   q_D4,
-#                   q_Wc1, q_Wc2, q_Wc3, q_Wc4]
-#         for v in q_vars:
-#             model.st(v >= 0)
-#
-#     # Solving the model
-#     model.solve()
-#     qS_soln = []
-#     qSc_soln = []
-#     qDc_soln = []
-#     qD_soln = []
-#     qW_soln = []
-#     land_soln = []
-#     for s in range(areas):
-#         qS_soln.append(qS_vars[s].get())
-#         qSc_soln.append(qSc_vars[s].get())
-#         qDc_soln.append(qDc_vars[s].get())
-#         qD_soln.append(qD_vars[s].get())
-#         qW_soln.append(qW_vars[s].get())
-#         land_soln.append(land_vars[s].get())
-#     return model.get(), qSc_soln, qDc_soln, qS_soln, qD_soln, qW_soln, land_soln
 
 
 def dem_unc(box, ohm):
@@ -569,11 +435,11 @@ def dem_unc(box, ohm):
         '''Defining the constraints'''
         # Domestic Demand Constraints
         if box == 1:
-            model.st((qS_vars[a] + qD_vars[a] >= (1 + d_uncertain[a] * error[a]) * water_demand[a]).forall(d_set[a]))
-            model.st((qW_vars[a].sum(axis=0) <= 0.6 * (1 + d_uncertain[a] * error[a]) * water_demand[a]).forall(d_set[a]))
+            model.st((qS_vars[a] + qD_vars[a] >= (1 + d_uncertain[a] * math.sqrt(error[a])) * water_demand[a]).forall(d_set[a]))
+            model.st((qW_vars[a].sum(axis=0) <= 0.6 * (1 + d_uncertain[a] * math.sqrt(error[a])) * water_demand[a]).forall(d_set[a]))
         else:
-            model.st((qS_vars[a] + qD_vars[a] >= (1 + d_uncertain[a] * error[a]) * water_demand[a]).forall(d_set[a]))
-            model.st((qW_vars[a].sum(axis=0) <= 0.6 * (1 + d_uncertain[a] * error[a]) * water_demand[a]).forall(d_set[a]))
+            model.st((qS_vars[a] + qD_vars[a] >= (1 + d_uncertain[a] * math.sqrt(error[a])) * water_demand[a]).forall(d_set[a]))
+            model.st((qW_vars[a].sum(axis=0) <= 0.6 * (1 + d_uncertain[a] * math.sqrt(error[a])) * water_demand[a]).forall(d_set[a]))
             # model.st((qS_vars[a] + qD_vars[a] >= water_demand[a] + d_uncertain[a] @ deltas[a]).forall(d_set[a]))
             # model.st((qW_vars[a].sum(axis=0) <= 0.6 * (water_demand[a] + d_uncertain[a] @ deltas[a])).forall(d_set[a]))
         # Crop Demand Constraints
@@ -585,10 +451,11 @@ def dem_unc(box, ohm):
                 qSc_vars[a] + qW_vars[a] + qDc_vars[a]))
 
         # Sources Constraint
-
-        for n in range(time):
-            model.st((qSc_vars[a].sum(axis=0)[n] + qDc_vars[a].sum(axis=0)[n] + qS_vars[a][n] + qD_vars[a][n] <= 0.9 *
-                      (cum_prod[a, n]) + cum_recharge[a, n] - cum_supply[a][n]))
+        model.st(qSc_vars[a].sum(axis=0) + qDc_vars[a].sum(axis=0) + qS_vars[a] + qD_vars[a] <= 0.9 *
+                      (yearly_prod[a]) + yearly_recharge[a, :])
+        # for n in range(time):
+        #     model.st((qSc_vars[a].sum(axis=0)[n] + qDc_vars[a].sum(axis=0)[n] + qS_vars[a][n] + qD_vars[a][n] <= 0.9 *
+        #               (cum_prod[a, n]) + cum_recharge[a, n] - cum_supply[a][n]))
 
         # Land Constraint
         model.st(land_vars[a] >= land_min)
@@ -684,6 +551,195 @@ def dem_rec_unc(box, ohm):
             r_set.append((rso.norm(r_uncertain[i]) <= ohm))
             d_set.append((rso.norm(d_uncertain[i]) <= ohm))
 
+    variance = np.var(recharge, axis=0)    # The variance of recharge for the various areas
+
+    delta = []  # Finding the cumulative sum of the Cholesky decomposition of the covariance matrix
+    for var in variance:
+        delta.append(np.diag(np.diag(np.linalg.cholesky(np.diag(np.full(time, var))))))
+    cum_supply = [[0], [0], [0], [0]]
+    for a in range(0, 4):
+        for i in range(1, time):
+            cum_supply[a].append(
+                (cum_supply[a][i - 1] + (
+                        qSc_vars[a].sum(axis=0)[i - 1] + qS_vars[a][i - 1] + qDc_vars[a].sum(axis=0)[i - 1] + qD_vars[a][
+                    i - 1])).sum())
+
+    # Objective Function
+    model.max(((revenue1.T @ land1).sum(axis=0) + (revenue2.T @ land2).sum(axis=0) + (revenue3.T @ land3).sum(axis=0) + (
+            revenue4.T @ land4).sum(axis=0) -
+               ((cost[0] * q_Sc_1).sum(axis=0) + (cost[1] * q_Sc_2).sum(axis=0) + (cost[2] * q_Sc_3).sum(axis=0) + (
+                       cost[3] * q_Sc_4).sum(axis=0) + (
+                        cost[0] * q_S1).sum(axis=0) + (cost[1] * q_S2).sum(axis=0) + (cost[2] * q_S3).sum(axis=0) + (
+                        cost[3] * q_S4).sum(axis=0) + 0.7 * (
+                        q_Dc1.sum(axis=0) + q_Dc2.sum(axis=0) + q_Dc3.sum(axis=0) + q_Dc4.sum(axis=0) + q_D1 + q_D2 + q_D3 + q_D4) + 0.4 * (
+                        q_Wc1.sum(axis=0) + q_Wc2.sum(axis=0) + q_Wc3.sum(axis=0) + q_Wc4.sum(axis=0)))).sum())
+
+    for a in range(areas):
+        '''Defining the constraints'''
+        # Domestic Demand Constraints
+        model.st((qS_vars[a] + qD_vars[a] >= (1 + d_uncertain[a] * math.sqrt(error[a])) * water_demand[a]).forall(d_set[a]))
+
+        # Crop Demand Constraints
+        model.st(qSc_vars[a] + qDc_vars[a] + qW_vars[a] >= crop_water[a] * land_vars[a])
+
+        # Quality Constraint
+        model.st(sal[a] * qS_vars[a] + desal_sal * qD_vars[a] <= domestic_sal * (qS_vars[a] + qD_vars[a]))
+        model.st(sal[a] * qSc_vars[a] + tww_sal * qW_vars[a] + desal_sal * qDc_vars[a] <= sal_tol[a] * (
+                qSc_vars[a] + qW_vars[a] + qDc_vars[a]))
+
+        # Sources Constraint
+        model.st((qW_vars[a].sum(axis=0) <= 0.6 * ((1 + d_uncertain[a] * math.sqrt(error[a])) * water_demand[a])).forall(d_set[a]))
+        model.st((qSc_vars[a].sum(axis=0) + qDc_vars[a].sum(axis=0) + qS_vars[a] + qD_vars[a] <= 0.9 *
+                      (yearly_prod[a])
+                      + yearly_recharge[a, :] + (delta[a] @ r_uncertain[a])).forall(r_set[a]))
+        # for z in range(time):
+        #     model.st((qSc_vars[a].sum(axis=0)[z] + qDc_vars[a].sum(axis=0)[z] + qS_vars[a][z] + qD_vars[a][z] <= 0.9 *
+        #               (cum_prod[a, z])
+        #               + cum_recharge[a, z] + (delta[a][:, z] @ r_uncertain[a]) - cum_supply[a][z]).forall(r_set[a]))
+
+        # Land Constraint
+        model.st(land_vars[a] >= land_min, land_vars[a] <= land_max)
+
+        # Non-negativity Constraint
+        q_vars = [q_Sc_1, q_S1, q_Sc_2, q_S2, q_Sc_3, q_S3, q_Sc_4, q_S4, q_Dc1, q_Dc2, q_Dc3, q_Dc4, q_D1, q_D2, q_D3,
+                  q_D4,
+                  q_Wc1, q_Wc2, q_Wc3, q_Wc4]
+        for v in q_vars:
+            model.st(v >= 0)
+
+    # Solving the model
+    model.solve(grb)
+    qS_soln = []
+    qSc_soln = []
+    qDc_soln = []
+    qD_soln = []
+    qW_soln = []
+    land_soln = []
+    for s in range(areas):
+        qS_soln.append(qS_vars[s].get())
+        qSc_soln.append(qSc_vars[s].get())
+        qDc_soln.append(qDc_vars[s].get())
+        qD_soln.append(qD_vars[s].get())
+        qW_soln.append(qW_vars[s].get())
+        land_soln.append(land_vars[s].get())
+    return model.get(), qSc_soln, qDc_soln, qS_soln, qD_soln, qW_soln, land_soln
+
+
+def prob_vio(q1, q2, q3, q4, rs):
+    """This function calculates the probability of violating the constraints"""
+    prob = []
+    for p in range(1000):
+        proba = []
+        for a in range(4):
+            proba.append(
+                    (np.sum(q1[a], axis=0) + np.sum(q2[a], axis=0) + q3[a] + q4[a] > 0.9 * (yearly_prod[a]) + rs[a][:, p]))
+        prob.append(np.sum(proba) > 1)   # This gives a sum of all falses.
+    return sum(prob)/len(prob)
+
+
+def prob_vio_demrec(q1, q2, q3, q4, q5,  rs):
+    """This function calculates the probability of violating the constraints"""
+    dem_mat = []
+    for r in range(areas):
+        dem_vec = []
+        for w in range(time):
+            dem_vec.append(np.random.normal(water_demand[r][w], (math.sqrt(error[r]))/3 * water_demand[r][w], 1000))
+        dem_mat.append(np.array(dem_vec))
+    prob = []
+    for p in range(1000):
+        proba = []
+        proba1 = []
+        for a in range(4):
+            proba.append(
+                    (np.sum(q1[a], axis=0) + np.sum(q2[a], axis=0) + q3[a] + q4[a] > 0.9 * (yearly_prod[a]) + rs[a][:, p]))
+            proba1.append((q3[a] + q4[a] < dem_mat[a][:, p]))  # If 1, then it means false and a sum will be falses
+            proba1.append(np.sum(q5[a], axis=0) > 0.6 * dem_mat[a][:, p])
+        prob.append(np.sum(proba) + np.sum(proba1) > 1)   # This gives a sum of all falses.
+    return sum(prob)/len(prob)
+
+
+def prob_vio_dem(q3, q4, q5):
+    """This function calculates the probability of violating the constraints"""
+    dem_mat = []
+    for r in range(areas):
+        dem_vec = []
+        for w in range(time):
+            dem_vec.append(np.random.normal(water_demand[r][w], (math.sqrt(error[r]))/3 * water_demand[r][w], 1000))
+        dem_mat.append(np.array(dem_vec))
+    prob = []
+    for p in range(1000):
+        proba1 = []
+        for a in range(4):
+            proba1.append((q3[a] + q4[a] < dem_mat[a][:, p]))  # If 1, then it means false and a sum will be falses
+            proba1.append(np.sum(q5[a], axis=0) > 0.6 * dem_mat[a][:, p])
+        prob.append(np.sum(proba1) > 1)   # This gives a sum of all falses.
+    return sum(prob)/len(prob)
+
+
+# Considering uncertainties in salinity levels
+def dem_recq_unc(ohm):
+    """Defining the Model"""
+    model = ro.Model()
+
+    # Define decision variables
+    q_Sc_1 = model.dvar((len(crops1), time))  # matrix indicating the amount of water from a source allocated to a crop
+    q_Sc_2 = model.dvar((len(crops2), time))
+    q_Sc_3 = model.dvar((len(crops3), time))
+    q_Sc_4 = model.dvar((len(crops4), time))
+
+    q_Wc1 = model.dvar(
+        (len(crops1), time))  # vector indicating the amount allocated to the various crops from treated wastewater
+    q_Wc2 = model.dvar(
+        (len(crops2), time))  # vector indicating the amount allocated to the various crops from treated wastewater
+    q_Wc3 = model.dvar(
+        (len(crops3), time))  # vector indicating the amount allocated to the various crops from treated wastewater
+    q_Wc4 = model.dvar(
+        (len(crops4), time))  # vector indicating the amount allocated to the various crops from treated wastewater
+
+    q_Dc1 = model.dvar(
+        (len(crops1), time))  # vector indicating the amount allocated to the various crops from desalinated water
+    q_Dc2 = model.dvar(
+        (len(crops2), time))  # vector indicating the amount allocated to the various crops from desalinated water
+    q_Dc3 = model.dvar(
+        (len(crops3), time))  # vector indicating the amount allocated to the various crops from desalinated water
+    q_Dc4 = model.dvar(
+        (len(crops4), time))  # vector indicating the amount allocated to the various crops from desalinated water
+
+    q_S1 = model.dvar(time)
+    q_S2 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
+    q_S3 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
+    q_S4 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
+
+    q_D1 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
+    q_D2 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
+    q_D3 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
+    q_D4 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
+
+    land1 = model.dvar((len(crops1), time))  # the amount of land allocated for the various crops
+    land2 = model.dvar((len(crops2), time))
+    land3 = model.dvar((len(crops3), time))
+    land4 = model.dvar((len(crops4), time))
+    qD_vars = [q_D1, q_D2, q_D3, q_D4]
+    qS_vars = [q_S1, q_S2, q_S3, q_S4]
+    qW_vars = [q_Wc1, q_Wc2, q_Wc3, q_Wc4]
+    qDc_vars = [q_Dc1, q_Dc2, q_Dc3, q_Dc4]
+    qSc_vars = [q_Sc_1, q_Sc_2, q_Sc_3, q_Sc_4]
+    sal_tol = [sal_tol1, sal_tol2, sal_tol3, sal_tol4]
+    crop_water = [crop_water1, crop_water2, crop_water3, crop_water4]
+    land_vars = [land1, land2, land3, land4]
+
+    # Creating the demand  and recharge uncertainty set
+    r_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
+    d_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
+    q_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
+    d_set = []
+    r_set = []
+    q_set = []
+    for i in range(areas):
+        r_set.append((rso.norm(r_uncertain[i]) <= ohm))
+        d_set.append((rso.norm(d_uncertain[i]) <= ohm))
+        q_set.append((rso.norm(q_uncertain[i]) <= ohm))
+
     cum_supply = [[0], [0], [0], [0]]
     for a in range(0, 4):
         for i in range(1, time):
@@ -753,356 +809,3 @@ def dem_rec_unc(box, ohm):
         qW_soln.append(qW_vars[s].get())
         land_soln.append(land_vars[s].get())
     return model.get(), qSc_soln, qDc_soln, qS_soln, qD_soln, qW_soln, land_soln
-
-# def dem_rec_unc(box, ohm):
-#     # If the demand is considering box uncertainty set, box=1. If not, box = 0 and then we state the radius
-#     """Defining the Model"""
-#     model = ro.Model()
-#
-#     # Define decision variables
-#     q_Sc_1 = model.dvar((len(crops1), time))  # matrix indicating the amount of water from a source allocated to a crop
-#     q_Sc_2 = model.dvar((len(crops2), time))
-#     q_Sc_3 = model.dvar((len(crops3), time))
-#     q_Sc_4 = model.dvar((len(crops4), time))
-#
-#     q_Wc1 = model.dvar(
-#         (len(crops1), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc2 = model.dvar(
-#         (len(crops2), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc3 = model.dvar(
-#         (len(crops3), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc4 = model.dvar(
-#         (len(crops4), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#
-#     q_Dc1 = model.dvar(
-#         (len(crops1), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc2 = model.dvar(
-#         (len(crops2), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc3 = model.dvar(
-#         (len(crops3), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc4 = model.dvar(
-#         (len(crops4), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#
-#     q_S1 = model.dvar(time)
-#     q_S2 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#     q_S3 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#     q_S4 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#
-#     q_D1 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D2 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D3 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D4 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#
-#     land1 = model.dvar((len(crops1), time))  # the amount of land allocated for the various crops
-#     land2 = model.dvar((len(crops2), time))
-#     land3 = model.dvar((len(crops3), time))
-#     land4 = model.dvar((len(crops4), time))
-#
-#     # Creating the demand  and recharge uncertainty set
-#     r_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
-#     d_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
-#     d_set = []
-#     r_set = []
-#     if box == 1:
-#         for i in range(areas):
-#             r_set.append((rso.norm(r_uncertain[i]) <= ohm))
-#             d_set.append((d_uncertain[i] >= -1, d_uncertain[i] <= 1))
-#     else:
-#         for i in range(areas):
-#             r_set.append((rso.norm(r_uncertain[i]) <= ohm))
-#             d_set.append((rso.norm(d_uncertain[i]) <= ohm))
-#
-#     # Objective Function
-#     model.max(
-#         ((revenue1.T @ land1).sum(axis=0) + (revenue2.T @ land2).sum(axis=0) + (revenue3.T @ land3).sum(axis=0) + (
-#                 revenue4.T @ land4).sum(axis=0) -
-#          ((cost[0] * q_Sc_1).sum(axis=0) + (cost[0] * q_S1).sum(axis=0) + (cost[1] * q_Sc_2).sum(axis=0) + (
-#                  cost[1] * q_S2).sum(axis=0) +
-#           (cost[2] * q_Sc_3).sum(axis=0) + (cost[2] * q_S3).sum(axis=0) + (cost[3] * q_Sc_4).sum(axis=0) + (
-#                   cost[3] * q_S4).sum(axis=0)
-#           + 0.7 * ((q_Dc1.sum(axis=0) + q_Dc2.sum(axis=0) + q_Dc3.sum(axis=0) + q_Dc4.sum(
-#                      axis=0)) + q_D1 + q_D2 + q_D3 + q_D4) + 0.4 * (
-#                   q_Wc1.sum(axis=0) + q_Wc2.sum(axis=0) + q_Wc3.sum(axis=0) + q_Wc4.sum(axis=0)))).sum())
-#
-#     '''Defining the constraints'''
-#     qD_vars = [q_D1, q_D2, q_D3, q_D4]
-#     qS_vars = [q_S1, q_S2, q_S3, q_S4]
-#     qW_vars = [q_Wc1, q_Wc2, q_Wc3, q_Wc4]
-#     qDc_vars = [q_Dc1, q_Dc2, q_Dc3, q_Dc4]
-#     qSc_vars = [q_Sc_1, q_Sc_2, q_Sc_3, q_Sc_4]
-#     sal_tol = [sal_tol1, sal_tol2, sal_tol3, sal_tol4]
-#     crop_water = [crop_water1, crop_water2, crop_water3, crop_water4]
-#     land_vars = [land1, land2, land3, land4]
-#
-#     # Finding the cumulative sums
-#     cum_supply = [[0], [0], [0], [0]]  # Supply
-#     r_uncertain_cum = []  # Random parameters of recharge
-#     for a in range(0, 4):
-#         r_uncertain_cum.append(np.cumsum(r_uncertain[a]))
-#         for i in range(1, time):
-#             cum_supply[a].append(
-#                 cum_supply[a][i - 1] + qSc_vars[a].sum(axis=0)[i] + qS_vars[a][i] + qD_vars[a][i] + qDc_vars[a].sum(axis=0)[
-#                     i])
-#     variance = np.var(recharge, axis=0)    # The variance of recharge for the various areas
-#
-#     delta = []  # Finding the cumulative sum of the Cholesky decomposition of the covariance matrix
-#     for var in variance:
-#         delta.append(np.diag(np.cumsum(np.diag(np.linalg.cholesky(np.diag(np.full(time, var)))))))
-#
-#     '''Defining the constraints'''
-#     for n in range(areas):
-#         # Domestic Demand Constraints
-#         model.st((qS_vars[n] + qD_vars[n] >= (1 + d_uncertain[n] * error[n]) * water_demand[n]).forall(d_set[n]))
-#
-#         # Crop Demand Constraints
-#         model.st(qSc_vars[n] + qDc_vars[n] + qW_vars[n] >= crop_water[n] * land_vars[n])
-#
-#         # Quality Constraint
-#         model.st(sal[n] * qS_vars[n] + desal_sal * qD_vars[n] <= domestic_sal * (qS_vars[n] + qD_vars[n]))
-#         model.st(sal[n] * qSc_vars[n] + tww_sal * qW_vars[n] + desal_sal * qDc_vars[n] <= sal_tol[n] * (
-#                 qSc_vars[n] + qW_vars[n] + qDc_vars[n]))
-#
-#         # Sources Constraint
-#         model.st((qW_vars[n].sum(axis=0) <= 0.6 * (1 + d_uncertain[n] * error[n]) * water_demand[n]).forall(d_set[n]))
-#         for z in range(time):
-#             model.st((qSc_vars[n].sum(axis=0)[z] + qDc_vars[n].sum(axis=0)[z] + qS_vars[n][z] + qD_vars[n][z] <= 0.9 *
-#                       (cum_prod[n, z])
-#                       + cum_recharge[n, z] + (delta[n][:, z] @ r_uncertain[n]) - cum_supply[n][z]).forall(r_set[n]))
-#
-#         # Land Constraint
-#         model.st(land_vars[n] >= land_min, land_vars[n] <= land_max)
-#
-#     # Non-negativity
-#     q_vars = [q_Sc_1, q_S1, q_Sc_2, q_S2, q_Sc_3, q_S3, q_Sc_4, q_S4, q_Dc1, q_Dc2, q_Dc3, q_Dc4, q_D1, q_D2, q_D3,
-#               q_D4,
-#               q_Wc1, q_Wc2, q_Wc3, q_Wc4]
-#     for q in q_vars:
-#         model.st(q >= 0)
-#
-#     # Solving the model
-#     model.solve(grb)
-#     qS_soln = []
-#     qSc_soln = []
-#     qDc_soln = []
-#     qD_soln = []
-#     qW_soln = []
-#     land_soln = []
-#     for s in range(areas):
-#         qS_soln.append(qS_vars[s].get())
-#         qSc_soln.append(qSc_vars[s].get())
-#         qDc_soln.append(qDc_vars[s].get())
-#         qD_soln.append(qD_vars[s].get())
-#         qW_soln.append(qW_vars[s].get())
-#         land_soln.append(land_vars[s].get())
-#     return model.get(), qSc_soln, qDc_soln, qS_soln, qD_soln, qW_soln, land_soln
-
-
-# def rec_unc(ohm):
-#     """Defining the Model"""
-#     model = ro.Model()
-#
-#     # Define decision variables
-#     q_Sc_1 = model.dvar((len(crops1), time))  # matrix indicating the amount of water from a source allocated to a crop
-#     q_Sc_2 = model.dvar((len(crops2), time))
-#     q_Sc_3 = model.dvar((len(crops3), time))
-#     q_Sc_4 = model.dvar((len(crops4), time))
-#
-#     q_Wc1 = model.dvar(
-#         (len(crops1), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc2 = model.dvar(
-#         (len(crops2), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc3 = model.dvar(
-#         (len(crops3), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#     q_Wc4 = model.dvar(
-#         (len(crops4), time))  # vector indicating the amount allocated to the various crops from treated wastewater
-#
-#     q_Dc1 = model.dvar(
-#         (len(crops1), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc2 = model.dvar(
-#         (len(crops2), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc3 = model.dvar(
-#         (len(crops3), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#     q_Dc4 = model.dvar(
-#         (len(crops4), time))  # vector indicating the amount allocated to the various crops from desalinated water
-#
-#     q_S1 = model.dvar(time)
-#     q_S2 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#     q_S3 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#     q_S4 = model.dvar(time)  # vector indicating the amount of water allocated for domestic use for the various sources
-#
-#     q_D1 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D2 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D3 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#     q_D4 = model.dvar(time)  # the amount of desalinated water allocated for domestic use
-#
-#     land1 = model.dvar((len(crops1), time))  # the amount of land allocated for the various crops
-#     land2 = model.dvar((len(crops2), time))
-#     land3 = model.dvar((len(crops3), time))
-#     land4 = model.dvar((len(crops4), time))
-#
-#     # Creating the demand  and recharge uncertainty set
-#     r_uncertain = [model.rvar(time), model.rvar(time), model.rvar(time), model.rvar(time)]
-#     r_set = []
-#     for r in range(areas):
-#         r_set.append((rso.norm(r_uncertain[r]) <= ohm))
-#
-#     # Objective Function
-#     model.max(((revenue1.T @ land1).sum(axis=0) + (revenue2.T @ land2).sum(axis=0) + (revenue3.T @ land3).sum(axis=0) + (
-#             revenue4.T @ land4).sum(axis=0) -
-#                ((cost[0] * q_Sc_1).sum(axis=0) + (cost[1] * q_Sc_2).sum(axis=0) + (cost[2] * q_Sc_3).sum(axis=0) + (
-#                        cost[3] * q_Sc_4).sum(axis=0) + (
-#                         cost[0] * q_S1).sum(axis=0) + (cost[1] * q_S2).sum(axis=0) + (cost[2] * q_S3).sum(axis=0) + (
-#                         cost[3] * q_S4).sum(axis=0) + 0.7 * (
-#                         q_Dc1.sum(axis=0) + q_Dc2.sum(axis=0) + q_Dc3.sum(axis=0) + q_Dc4.sum(axis=0) + q_D1 + q_D2 + q_D3 + q_D4) + 0.4 * (
-#                         q_Wc1.sum(axis=0) + q_Wc2.sum(axis=0) + q_Wc3.sum(axis=0) + q_Wc4.sum(axis=0)))).sum())
-#
-#     '''Defining the constraints'''
-#     qD_vars = [q_D1, q_D2, q_D3, q_D4]
-#     qS_vars = [q_S1, q_S2, q_S3, q_S4]
-#     qW_vars = [q_Wc1, q_Wc2, q_Wc3, q_Wc4]
-#     qDc_vars = [q_Dc1, q_Dc2, q_Dc3, q_Dc4]
-#     qSc_vars = [q_Sc_1, q_Sc_2, q_Sc_3, q_Sc_4]
-#     sal_tol = [sal_tol1, sal_tol2, sal_tol3, sal_tol4]
-#     crop_water = [crop_water1, crop_water2, crop_water3, crop_water4]
-#     land_vars = [land1, land2, land3, land4]
-#
-#     # Finding the cumulative sums
-#     cum_supply = [[0], [0], [0], [0]]  # Supply
-#     r_uncertain_cum = []  # Random parameters of recharge
-#     for m in range(0, 4):
-#         # r_uncertain_cum.append(np.cumsum(r_uncertain[a]))
-#         for e in range(1, time):
-#             cum_supply[m].append(
-#                 cum_supply[m][e - 1] + qSc_vars[m].sum(axis=0)[e] + qS_vars[m][e] + qD_vars[m][e] + qDc_vars[m].sum(axis=0)[
-#                     e])
-#     variance = np.var(recharge, axis=0)    # The variance of recharge for the various areas
-#
-#     delta = []  # Finding the cumulative sum of the Cholesky decomposition of the covariance matrix
-#     for var in variance:
-#         delta.append(np.diag(np.cumsum(np.diag(np.linalg.cholesky(np.diag(np.full(time, var)))))))
-#
-#     '''Defining the constraints'''
-#     # Domestic Demand Constraints
-#     for n in range(areas):
-#         # Domestic Demand Constraints
-#         model.st(qS_vars[n] + qD_vars[n] >= water_demand[n])
-#
-#         # Crop Demand Constraints
-#         model.st(qSc_vars[n] + qDc_vars[n] + qW_vars[n] >= crop_water[n] * land_vars[n])
-#
-#         # Quality Constraint
-#         model.st(sal[n] * qS_vars[n] + desal_sal * qD_vars[n] <= domestic_sal * (qS_vars[n] + qD_vars[n]))
-#         model.st(sal[n] * qSc_vars[n] + tww_sal * qW_vars[n] + desal_sal * qDc_vars[n] <= sal_tol[n] * (
-#                 qSc_vars[n] + qW_vars[n] + qDc_vars[n]))
-#
-#         # Sources Constraint
-#         model.st(qW_vars[n].sum(axis=0) <= 0.6 * water_demand[n])
-#         for z in range(time):
-#             model.st((qSc_vars[n].sum(axis=0)[z] + qDc_vars[n].sum(axis=0)[z] + qS_vars[n][z] + qD_vars[n][z] <= 0.9 *
-#                       (cum_prod[n, z]) + cum_recharge[n, z] - cum_supply[n][z]))
-#         # for z in range(time):
-#         #     model.st((qSc_vars[n].sum(axis=0)[z] + qDc_vars[n].sum(axis=0)[z] + qS_vars[n][z] + qD_vars[n][z] <= 0.9 *
-#         #               (cum_prod[n, z])
-#         #               + cum_recharge[n, z] + (delta[n][:, z] @ r_uncertain[n]) - cum_supply[n][z]).forall(r_set[n]))
-#         # for z in range(time):
-#         #     model.st((qSc_vars[n].sum(axis=0)[z] + qDc_vars[n].sum(axis=0)[z] + qS_vars[n][z] + qD_vars[n][z] <= 0.9 *
-#         #           (cum_prod[n, z])
-#         #           + cum_recharge[n, z] - cum_supply[n][z]))
-#         # Land Constraint
-#         model.st(land_vars[n] >= land_min, land_vars[n] <= land_max)
-#
-#     # Non-negativity
-#     q_vars = [q_Sc_1, q_S1, q_Sc_2, q_S2, q_Sc_3, q_S3, q_Sc_4, q_S4, q_Dc1, q_Dc2, q_Dc3, q_Dc4, q_D1, q_D2, q_D3,
-#               q_D4,
-#               q_Wc1, q_Wc2, q_Wc3, q_Wc4]
-#     for q in q_vars:
-#         model.st(q >= 0)
-#
-#     # Solving the model
-#     model.solve(grb)
-#     qS_soln = []
-#     qSc_soln = []
-#     qDc_soln = []
-#     qD_soln = []
-#     qW_soln = []
-#     land_soln = []
-#     for s in range(areas):
-#         qS_soln.append(qS_vars[s].get())
-#         qSc_soln.append(qSc_vars[s].get())
-#         qDc_soln.append(qDc_vars[s].get())
-#         qD_soln.append(qD_vars[s].get())
-#         qW_soln.append(qW_vars[s].get())
-#         land_soln.append(land_vars[s].get())
-#     return model.get(), qSc_soln, qDc_soln, qS_soln, qD_soln, qW_soln, land_soln
-
-
-def prob_vio(q1, q2, q3, q4, rs):
-    """This function calculates the probability of violating the constraints"""
-    cum_supply = [[0], [0], [0], [0]]
-    for m in range(0, 4):
-        for i in range(1, time):
-            cum_supply[m].append(
-                cum_supply[m][i - 1] + np.sum(q1[m], axis=0)[i] + np.sum(q2[m], axis=0)[i] + q3[m][i] + q4[m][i])
-    prob = []
-    cum = [np.cumsum(rs[0], axis=1), np.cumsum(rs[1], axis=1), np.cumsum(rs[2], axis=1), np.cumsum(rs[3], axis=1)]
-    for p in range(1000):
-        proba = []
-        for a in range(4):
-            for b in range(time):
-                proba.append(
-                    (np.sum(q1[a], axis=0)[b] + np.sum(q2[a], axis=0)[b] + q3[a][b] + q4[a][b] > 0.9 * (cum_prod[a, b]) +
-                    cum[a][b, p] - cum_supply[a][b]))
-        prob.append(np.sum(proba) > 1)   # This gives a sum of all falses.
-    return sum(prob)/len(prob)
-
-
-def prob_vio_demrec(q1, q2, q3, q4, q5,  rs):
-    """This function calculates the probability of violating the constraints"""
-    dem_mat = []
-    for r in range(areas):
-        dem_vec = []
-        for w in range(time):
-            dem_vec.append(np.random.normal(water_demand[r][w], (error[r]/3) * water_demand[r][w], 1000))
-        dem_mat.append(np.array(dem_vec))
-    cum_supply = [[0], [0], [0], [0]]
-    for m in range(0, 4):
-        for i in range(1, time):
-            cum_supply[m].append(
-                cum_supply[m][i - 1] + np.sum(q1[m], axis=0)[i] + np.sum(q2[m], axis=0)[i] + q3[m][i] + q4[m][i])
-    prob = []
-    cum = [np.cumsum(rs[0], axis=1), np.cumsum(rs[1], axis=1), np.cumsum(rs[2], axis=1), np.cumsum(rs[3], axis=1)]
-    for p in range(1000):
-        proba = []
-        proba1 = []
-        for a in range(4):
-            for b in range(time):
-                proba.append(
-                    (np.sum(q1[a], axis=0)[b] + np.sum(q2[a], axis=0)[b] + q3[a][b] + q4[a][b] > 0.9 * (cum_prod[a, b]) +
-                    cum[a][b, p] - cum_supply[a][b]))
-            proba1.append((q3[a] + q4[a] < dem_mat[a][:, p]))  # If 1, then it means false and a sum will be falses
-            proba1.append(np.sum(q5[a], axis=0) > 0.6 * dem_mat[a][:, p])
-        prob.append(np.sum(proba) + np.sum(proba1) > 1)   # This gives a sum of all falses.
-        # prob.append(proba == False)
-        # prob.append(np.sum(proba))  # This gives me the sum of those that didn't violate the constraint
-    # print(sum(prob)/len(prob))
-    return sum(prob)/len(prob)
-
-
-def prob_vio_dem(q3, q4, q5):
-    """This function calculates the probability of violating the constraints"""
-    dem_mat = []
-    for r in range(areas):
-        dem_vec = []
-        for w in range(time):
-            dem_vec.append(np.random.normal(water_demand[r][w], (error[r]/3) * water_demand[r][w], 1000))
-        dem_mat.append(np.array(dem_vec))
-    prob = []
-    for p in range(1000):
-        proba1 = []
-        for a in range(4):
-            proba1.append((q3[a] + q4[a] < dem_mat[a][:, p]))  # If 1, then it means false and a sum will be falses
-            proba1.append(np.sum(q5[a], axis=0) > 0.6 * dem_mat[a][:, p])
-        prob.append(np.sum(proba1) > 1)   # This gives a sum of all falses.
-    return sum(prob)/len(prob)
-
-

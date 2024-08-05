@@ -1,5 +1,6 @@
 ﻿Crops,Water requirement,Optimum Salinity,Revenue,Sources,Cost,Quantity,Salinity
-Almonds,7000,1.5,3567.456,A ,0.25,10402818.33,5.2
+Capsicum,14000,1.5,8744.725,A ,0.25,10402818.33,5.2
+Almonds,7000,1.5,3567.456,,,,
 Watermelon,4000,2.5,5283.526,,,,
 Zucchini,3300,4.9,4883.225,,,,
 Cabbage,9000,1.8,19916.15,,,,

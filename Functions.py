@@ -326,12 +326,14 @@ def AGMC_13(X, Y, Z, w):
         B1.append(-0.5 * (X11[i - 1] + X11[i]))
         B2.append(0.5 * (X21t[i - 1] + X21t[i]))
         B3.append(0.5 * (X31t[i - 1] + X31t[i]))
-    B = (np.array([B1, B2, B3, B4])).T
+    # Flatten the nested arrays in B1, B2, and B3
+    B1_flat = [item[0] for item in B1]
+    B2_flat = [item[0] for item in B2]
+    B3_flat = [item[0] for item in B3]
+    B = (np.array([B1_flat, B2_flat, B3_flat, B4])).T
 
     # u is the grey control parameter and b1, b2 and b3 are the grey developmental coefficient from the grey differential equation
     [b1, b2, b3, u] = inv(B.T @ B) @ B.T @ Y
-
-    # print(b1, b2,b3, u)
 
     def f_h(b1, b2, x1, x2, u):
         return (b1 * x1) + (b2 * x2) + u
@@ -355,9 +357,65 @@ def AGMC_13(X, Y, Z, w):
     # Finding the predicted sequence
     X11predict = [X_norm[0]]
     for i in range(1, r):
-        X11predict.append(X11Apredict[i] - (w * X11Apredict[i - 1]))
+        X11predict.append((X11Apredict[i] - (w * X11Apredict[i - 1]))[0])
     Predicted_water_consumption = np.array(X11predict) * np.max(X)
     return Predicted_water_consumption
+
+
+def objective_function(w, X, Y, Z,):
+    # Call the AGMC_13 function with the given w
+    predicted_water_consumption = AGMC_13(X, Y, Z, w)
+
+    # Calculate error (MSE for example) between predicted and actual water consumption
+    error = np.mean((predicted_water_consumption - X)**2)
+
+    return error
+
+
+# Particle Swarm Optimization
+def pso(objective_function, num_particles, max_iterations):
+    # Define PSO parameters
+    w = 0.5  # Inertia weight
+    c1 = 2.0  # Cognitive weight
+    c2 = 2.0  # Social weight
+
+    # Initialize particles
+    particles_position = np.random.uniform(low=0.01, high=0.1, size=num_particles)
+    particles_velocity = np.zeros(num_particles)
+    particles_best_position = particles_position.copy()
+    particles_best_value = np.full(num_particles, np.inf)
+    global_best_position = None
+    global_best_value = np.inf
+
+    # Main loop
+    for _ in range(max_iterations):
+        for i in range(num_particles):
+            # Evaluate fitness
+            fitness = objective_function(particles_position[i])
+
+            # Update personal best
+            if fitness < particles_best_value[i]:
+                particles_best_value[i] = fitness
+                particles_best_position[i] = particles_position[i]
+
+            # Update global best
+            if fitness < global_best_value:
+                global_best_value = fitness
+                global_best_position = particles_position[i]
+
+        for i in range(num_particles):
+            # Update velocity
+            particles_velocity[i] = w * particles_velocity[i] + c1 * np.random.random() * (particles_best_position[i] - particles_position[i]) + c2 * np.random.random() * (global_best_position - particles_position[i])
+
+            # Update position
+            particles_position[i] += particles_velocity[i]
+
+            # Ensure position stays within bounds
+            particles_position[i] = np.clip(particles_position[i], 0.01, 0.1)
+
+    # Return best solution
+    best_w = global_best_position
+    return best_w
 
 
 def GMC_12(X, Y):
@@ -443,8 +501,6 @@ def GMC_13(X, Y, Z):
 
     # u is the grey control parameter and b1, b2 and b3 are the grey developmental coefficient from the grey differential equation
     [b1, b2, b3, u] = inv(B.T @ B) @ B.T @ Y
-
-    # print(b1, b2, u)
 
     def f_h(b1, b2, x1, x2, u):
         return (b1 * x1) + (b2 * x2) + u
